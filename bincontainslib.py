@@ -64,7 +64,7 @@ def createCallGraphFromLibrary(filename):
 	name2addr, addr2name, addresses = extractSymbolAddresses(filename)
 	addresses.sort()
 
-	cmd = "objdump -j .text -r " + filename + " | grep 'R_X86_64_PLT32' | awk '{print $1\" \"$3;}' | grep -Eo '^[^-]+'"
+	cmd = "objdump -j .text -r " + filename + " | grep -E 'R_X86_64_PLT32|R_X86_64_PC32' | awk '{print $1\" \"$3;}' | grep -Eo '^[^-]+'"
 	lines = [line for line in os.popen(cmd).readlines()]
 
 	G = nx.DiGraph()
@@ -103,6 +103,9 @@ else:
 	print("no dice")
 
 nx.draw(binGraph, labels=binLabels)
+plt.show()
+
+nx.draw(libGraph, labels=libLabels)
 plt.show()
 
 #nx.set_node_attributes(binGraph, binLabels, 'label')
