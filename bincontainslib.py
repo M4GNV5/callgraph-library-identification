@@ -1,4 +1,4 @@
-import os, sys, networkx as nx, matplotlib.pyplot as plt
+import os, sys, r2pipe, networkx as nx, matplotlib.pyplot as plt
 
 def findFunctionFromAddress(functionAddresses, address):
 	# assume functionAddresses is sorted
@@ -89,18 +89,44 @@ def createCallGraphFromLibrary(filename):
 
 	return G, addr2name
 
+def createCallGraphUsingRadare2(filename):
+	r = r2pipe.open(filename)
+	r.cmd("aaa")
+	functions = r.cmdj("agCj")
 
-	
+	G = nx.DiGraph()
+	G.add_nodes_from([fn["name"] for fn in functions])
+	addr2name = {}
+	name2addr = {}
+	for i, func in enumerate(functions):
+		G.add_node(i)
+
+		name = func["name"]
+		addr2name[i] = name
+		name2addr[name] = i
+
+	for i, func in enumerate(functions):
+		for name in func["imports"]:
+			j = name2addr[name]
+			G.add_edge(i, j)
+
+	return G, addr2name
+
 binFile = sys.argv[1]
 libFile = sys.argv[2]
-binGraph, binLabels = createCallGraphFromBinary(binFile)
+#binGraph, binLabels = createCallGraphFromBinary(binFile)
+binGraph, binLabels = createCallGraphUsingRadare2(binFile)
 libGraph, libLabels = createCallGraphFromLibrary(libFile)
 
+'''
 matcher = nx.algorithms.isomorphism.DiGraphMatcher(binGraph, libGraph)
 if matcher.subgraph_is_isomorphic():
 	print("HEUREKA!")
 else:
 	print("no dice")
+'''
+distance = nx.algorithms.similarity.graph_edit_distance(binGraph, libGraph)
+print(distance)
 
 nx.draw(binGraph, labels=binLabels)
 plt.show()
