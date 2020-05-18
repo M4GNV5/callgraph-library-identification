@@ -1,4 +1,8 @@
-import os, sys, r2pipe, networkx as nx, matplotlib.pyplot as plt
+import os, sys, r2pipe
+import networkx as nx, networkx.algorithms as nxa
+from scipy.optimize import linear_sum_assignment
+import matplotlib.pyplot as plt
+from operator import itemgetter
 
 def findFunctionFromAddress(functionAddresses, address):
 	# assume functionAddresses is sorted
@@ -95,7 +99,6 @@ def createCallGraphUsingRadare2(filename):
 	functions = r.cmdj("agCj")
 
 	G = nx.DiGraph()
-	G.add_nodes_from([fn["name"] for fn in functions])
 	addr2name = {}
 	name2addr = {}
 	for i, func in enumerate(functions):
@@ -114,19 +117,122 @@ def createCallGraphUsingRadare2(filename):
 
 binFile = sys.argv[1]
 libFile = sys.argv[2]
+print("generating graphs...")
 #binGraph, binLabels = createCallGraphFromBinary(binFile)
 binGraph, binLabels = createCallGraphUsingRadare2(binFile)
 libGraph, libLabels = createCallGraphFromLibrary(libFile)
+#libGraph, libLabels = createCallGraphUsingRadare2(libFile)
+
+binNodes = list(binGraph.nodes())
+libNodes = list(libGraph.nodes())
+
+for k, v in binLabels.items():
+	if v.startswith("sym."):
+		binLabels[k] = v[4:]
+
+
+
+def nodeDistance(a, b):
+	if binLabels[a] == libLabels[b]:
+		return 0
+	else:
+		return 1
+def degreeDistance(a, b):
+	inDistance = abs(binGraph.in_degree(a) - libGraph.in_degree(b))
+	outDistance = abs(binGraph.out_degree(a) - libGraph.out_degree(b))
+	return inDistance + outDistance
+def edgeDistance(a, b):
+	return nodeDistance(a, b) + degreeDistance(a, b)
+def sortedLabelSetDistance(labelsA, labelsB):
+	# labelsA == sorted(Ga.neighbors(a))
+	# labelsB == sorted(Gb.neighbors(b))
+	# this function is called twice, once for successors, once for predecessors
+	distance = 0
+	iA = 0
+	iB = 0
+	lenA = len(labelsA)
+	lenB = len(labelsB)
+	while iA < lenA and iB < lenB:
+		if labelsA[iA] < labelsB[iB]:
+			distance += 1
+			iA += 1
+		elif labelsA[iA] > labelsB[iB]:
+			distance += 1
+			iB += 1
+		else:
+			iA += 1
+			iB += 1
+
+	distance += lenA - iA
+	distance += lenB - iB
+	return distance
+
+def calculateStarDistanceMatrix():
+	binStarLabels = []
+	for a in binNodes:
+		succLabels = [*map(lambda x: binLabels[x], binGraph.successors(a))]
+		precLabels = [*map(lambda x: binLabels[x], binGraph.predecessors(a))]
+		succLabels.sort()
+		precLabels.sort()
+		binStarLabels.append((a, succLabels, precLabels))
+
+	distanceMatrix = []
+
+	for b in libNodes:
+		bSuccLabels = [*map(lambda x: libLabels[x], libGraph.successors(b))]
+		bPrecLabels = [*map(lambda x: libLabels[x], libGraph.predecessors(b))]
+		bSuccLabels.sort()
+		bPrecLabels.sort()
+
+		row = []
+		for a, aSuccLabels, aPrecLabels in binStarLabels:
+			distance = edgeDistance(a, b)
+			distance += sortedLabelSetDistance(aSuccLabels, bSuccLabels)
+			distance += sortedLabelSetDistance(aPrecLabels, bPrecLabels)
+			row.append(distance)
+		distanceMatrix.append(row)
+
+	return distanceMatrix
+
+def printDistanceMatrix(distanceMatrix):
+	for i, a in enumerate(binNodes):
+		print(29 * " " + i * "   ┃" + "   ┏> " + binLabels[a])
+
+	for y, row in enumerate(distanceMatrix):
+		print("{:30}".format(libLabels[libNodes[y]]), end="")
+		for x, distance in enumerate(row):
+			print("{:3}".format(distance), end=" ")
+		print()
+
+
+print("generating {}x{} distance matrix...".format(len(binNodes), len(libNodes)))
+distanceMatrix = calculateStarDistanceMatrix()
+#printDistanceMatrix(distanceMatrix)
+
+print("approximating assignment problem...")
+aIndices, bIndices = linear_sum_assignment(distanceMatrix)
+
+print("DONE")
+
+totalDistance = 0
+for b, a in zip(aIndices, bIndices):
+	totalDistance += distanceMatrix[b][a]
+
+	a = list(binGraph.nodes())[a]
+	b = list(libGraph.nodes())[b]
+	print("Match {:30} to {:30}".format(binLabels[a], libLabels[b]))
+
+print("Approximated edit distance: {}".format(totalDistance))
 
 '''
-matcher = nx.algorithms.isomorphism.DiGraphMatcher(binGraph, libGraph)
+matcher = nxa.isomorphism.DiGraphMatcher(binGraph, libGraph)
 if matcher.subgraph_is_isomorphic():
 	print("HEUREKA!")
 else:
 	print("no dice")
-'''
-distance = nx.algorithms.similarity.graph_edit_distance(binGraph, libGraph)
-print(distance)
+
+distance = nxa.similarity.graph_edit_distance(binGraph, libGraph)
+print(distance, len(binGraph.nodes()), len(libGraph.nodes()))
 
 nx.draw(binGraph, labels=binLabels)
 plt.show()
@@ -139,3 +245,4 @@ plt.show()
 
 #nx.set_node_attributes(libGraph, libLabels, 'label')
 #nx.write_graphml(binGraph, 'lib.graphml')
+'''
