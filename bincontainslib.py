@@ -120,15 +120,18 @@ libFile = sys.argv[2]
 print("generating graphs...")
 #binGraph, binLabels = createCallGraphFromBinary(binFile)
 binGraph, binLabels = createCallGraphUsingRadare2(binFile)
-libGraph, libLabels = createCallGraphFromLibrary(libFile)
-#libGraph, libLabels = createCallGraphUsingRadare2(libFile)
+#libGraph, libLabels = createCallGraphFromLibrary(libFile)
+libGraph, libLabels = createCallGraphUsingRadare2(libFile)
 
 binNodes = list(binGraph.nodes())
 libNodes = list(libGraph.nodes())
 
-for k, v in binLabels.items():
-	if v.startswith("sym."):
-		binLabels[k] = v[4:]
+def normalizeLabels(labels):
+	for k, v in labels.items():
+		if "." in v:
+			labels[k] = v[v.rindex(".") + 1 : ]
+normalizeLabels(binLabels)
+normalizeLabels(libLabels)
 
 
 
@@ -143,6 +146,7 @@ def degreeDistance(a, b):
 	return inDistance + outDistance
 def edgeDistance(a, b):
 	return nodeDistance(a, b) + degreeDistance(a, b)
+
 def sortedLabelSetDistance(labelsA, labelsB):
 	# labelsA == sorted(Ga.neighbors(a))
 	# labelsB == sorted(Gb.neighbors(b))
@@ -166,7 +170,6 @@ def sortedLabelSetDistance(labelsA, labelsB):
 	distance += lenA - iA
 	distance += lenB - iB
 	return distance
-
 def calculateStarDistanceMatrix():
 	binStarLabels = []
 	for a in binNodes:
@@ -204,10 +207,23 @@ def printDistanceMatrix(distanceMatrix):
 			print("{:3}".format(distance), end=" ")
 		print()
 
+def dumpDistanceMatrix(distanceMatrix):
+	with open("distancematrix.csv", "w+") as fd:
+		fd.write(",")
+		for a in binNodes:
+			fd.write(binLabels[a] + ",")
+		fd.write("\n")
+
+		for y, row in enumerate(distanceMatrix):
+			fd.write(libLabels[libNodes[y]] + ",")
+			for x, distance in enumerate(row):
+				fd.write(str(distance) + ",")
+			fd.write("\n")
 
 print("generating {}x{} distance matrix...".format(len(binNodes), len(libNodes)))
 distanceMatrix = calculateStarDistanceMatrix()
 #printDistanceMatrix(distanceMatrix)
+dumpDistanceMatrix(distanceMatrix)
 
 print("approximating assignment problem...")
 aIndices, bIndices = linear_sum_assignment(distanceMatrix)
@@ -215,14 +231,33 @@ aIndices, bIndices = linear_sum_assignment(distanceMatrix)
 print("DONE")
 
 totalDistance = 0
+correctMatches = 0
+wrongMatches = 0
+missingMatches = 0
 for b, a in zip(aIndices, bIndices):
-	totalDistance += distanceMatrix[b][a]
+	distance = distanceMatrix[b][a]
+	totalDistance += distance
 
-	a = list(binGraph.nodes())[a]
-	b = list(libGraph.nodes())[b]
-	print("Match {:30} to {:30}".format(binLabels[a], libLabels[b]))
+	aLabel = binLabels[binNodes[a]]
+	bLabel = libLabels[libNodes[b]]
+
+	correctMatchDistance = None
+	for i, x in enumerate(distanceMatrix[b]):
+		if binLabels[binNodes[i]] == bLabel:
+			correctMatchDistance = x
+
+	print("Match {:30} to {:30} with distance {}. Distance to correct match {}"
+		.format(aLabel, bLabel, distance, correctMatchDistance))
+
+	if aLabel == bLabel:
+		correctMatches += 1
+	elif correctMatchDistance is None:
+		missingMatches +=1
+	else:
+		wrongMatches += 1
 
 print("Approximated edit distance: {}".format(totalDistance))
+print("Correct matches: {}\nWrong matches: {}\nMissing functions: {}".format(correctMatches, wrongMatches, missingMatches))
 
 '''
 matcher = nxa.isomorphism.DiGraphMatcher(binGraph, libGraph)
