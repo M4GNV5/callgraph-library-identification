@@ -398,7 +398,7 @@ As an example figure \ref{fig:graphmatch:distance} shows the cost matrix when ma
 		\hline
 		$\varepsilon_b$	& 3 & 3 & 3 & \cellcolor{orange}3 \\
 		\hline
-		$A_b$			& \cellcolor{orange}0 & 3 & 3 & 1 \\
+		$A_b$			& \cellcolor{orange}0 & 2 & 2 & 1 \\
 		\hline
 		$B_b$			& 2 & \cellcolor{orange}1 & 2 & 2 \\
 		\hline
@@ -467,10 +467,10 @@ Call graphs obtained from binary or firmware files are usually unlabeled directe
 A simple alternative cost function for call graphs is similar to $\lambda_{\text{dedge}}$, but without the useage of $\lambda_{\text{node}}$.
 
 \begin{equation}
-	\lambda_{\text{degede'}} = |\text{deg}_{in}(v_1) - \text{deg}_{in}(v_2)| + |\text{deg}_{out}(v_1) - \text{deg}_{out}(v_2)|
+	\lambda_{\text{dedge'}} = |\text{deg}_{in}(v_1) - \text{deg}_{in}(v_2)| + |\text{deg}_{out}(v_1) - \text{deg}_{out}(v_2)|
 \end{equation}
 
-Call graphs often consist of hundreds to thousand nodes, with a $\text{deg}_{in}$ and $\text{deg}_{out}$ being usually around 0 to 10. Thus the $\lambda_{\text{degede'}}$ function results in a lot of false positives.
+Call graphs often consist of hundreds to thousand nodes, with a $\text{deg}_{in}$ and $\text{deg}_{out}$ being usually around 0 to 10. Thus the $\lambda_{\text{dedge'}}$ function results in a lot of false positives.
 
 Instead a custom label function $l(v)$ is defined, based on function metadata extracted from the binary. Depending on the architecture and ABI of the program function parameters and return values are passed through registers, on the stack or both. By inspecting the use of all upwards exposed values\footnote{an upwards exposed value is a value used before it is changed/overwritten\cite{compilerbook, regalloc}} one can derive the size and count of all parameters of a function. Often floating point values are used with special instructions, allowing to distinguish between floating point and integer values. Values used as an address in a load instruction are known to be pointers. \\
 Using this technique argument count, size and kind, i.e. wether is an integer, float or pointer, can be extracted. For a vertex $v_i$ in the callgraph we can thus extract the corresponding function arguments $A$. The $i$th argument $a_i$ has size $sizeof(a_i)$ and type $typeof(a_i)$. \\
