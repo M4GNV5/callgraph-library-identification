@@ -95,13 +95,13 @@ def createCallGraphFromLibrary(filename):
 
 def createCallGraphUsingRadare2(filename):
 	r = r2pipe.open(filename)
-	r.cmd("aaa")
+	r.cmd("aaaa")
 	functions = r.cmdj("agCj")
 
 	G = nx.DiGraph()
 	addr2name = {}
 	name2addr = {}
-	addr2args = {}
+	addr2attrs = {}
 	for i, func in enumerate(functions):
 		G.add_node(i)
 
@@ -110,11 +110,24 @@ def createCallGraphUsingRadare2(filename):
 		name2addr[name] = i
 
 		r.cmd("s " + name)
-		variables = r.cmdj("afvj")
-		args = [x["type"] for x in variables["reg"]]
-		args += [x["type"] for x in variables["sp"] if x["kind"] == "arg"]
-		args += [x["type"] for x in variables["bp"] if x["kind"] == "arg"]
-		addr2args[i] = args
+		funcInfo = r.cmdj("afij")[0]
+
+		args = [x["type"] for x in funcInfo["regvars"]]
+		args += [x["type"] for x in funcInfo["spvars"] if x["kind"] == "arg"]
+		args += [x["type"] for x in funcInfo["bpvars"] if x["kind"] == "arg"]
+
+		blocks = r.cmdj("afbj")
+		blocks = [x["ninstr"] for x in blocks]
+		blocks.sort()
+
+		attributes = {
+			"args": args,
+			"blocks": blocks,
+			"numLocals": funcInfo["nlocals"],
+			"stackSize": funcInfo["stackframe"],
+			# TODO more?
+		}
+		addr2attrs[i] = attributes
 
 	for i, func in enumerate(functions):
 		for name in func["imports"]:
@@ -123,15 +136,15 @@ def createCallGraphUsingRadare2(filename):
 			j = name2addr[name]
 			G.add_edge(i, j)
 
-	return G, addr2name, addr2args
+	return G, addr2name, addr2attrs
 
 binFile = sys.argv[1]
 libFile = sys.argv[2]
 print("generating graphs...")
 #binGraph, binLabels = createCallGraphFromBinary(binFile)
-binGraph, binLabels, binFuncArgs = createCallGraphUsingRadare2(binFile)
+binGraph, binLabels, binFuncAttrs = createCallGraphUsingRadare2(binFile)
 #libGraph, libLabels = createCallGraphFromLibrary(libFile)
-libGraph, libLabels, libFuncArgs = createCallGraphUsingRadare2(libFile)
+libGraph, libLabels, libFuncAttrs = createCallGraphUsingRadare2(libFile)
 
 binNodes = list(binGraph.nodes())
 libNodes = list(libGraph.nodes())
@@ -209,22 +222,30 @@ def calculateStarDistanceMatrix():
 
 
 
-def argsDistance(a, b):
-	argsA = binFuncArgs[a]
-	argsB = libFuncArgs[b]
-	dist = abs(len(argsA) - len(argsB))
+def attributeDistance(a, b):
+	dist = 0
+	attrsA = binFuncAttrs[a]
+	attrsB = libFuncAttrs[b]
 
+	argsA = attrsA["args"]
+	argsB = attrsB["args"]
+	dist += abs(len(argsA) - len(argsB))
 	for i in range(min(len(argsA), len(argsB))):
 		if argsA[i] != argsB[i]:
 			dist += 1
 
+	dist += sortedLabelSetDistance(attrsA["blocks"], attrsB["blocks"])
+
+	#dist += abs(attrsA["numLocals"] - attrsB["numLocals"])
+	#dist += abs(attrsA["stackSize"] - attrsB["stackSize"]) // 8
+
 	return dist
 
-def argsEdgeDistance(a, b):
-	return argsDistance(a, b) + degreeDistance(a, b)
+def attributeEdgeDistance(a, b):
+	return attributeDistance(a, b) + degreeDistance(a, b)
 
-def argsStarDistance(a, b):
-	dist = argsEdgeDistance(a, b)
+def attributeStarDistance(a, b):
+	dist = attributeEdgeDistance(a, b)
 
 	aSuccs = binGraph.successors(a)
 	aPrecs = binGraph.predecessors(a)
@@ -232,20 +253,20 @@ def argsStarDistance(a, b):
 	bPrecs = libGraph.predecessors(b)
 
 	for i in aSuccs:
-		dist += min((argsEdgeDistance(i, j) for j in bSuccs), default=0)
+		dist += min((attributeEdgeDistance(i, j) for j in bSuccs), default=0)
 
 	for i in aPrecs:
-		dist += min((argsEdgeDistance(i, j) for j in bPrecs), default=0)
+		dist += min((attributeEdgeDistance(i, j) for j in bPrecs), default=0)
 
 	return dist
 
-def calculateArgsStarDistanceMatrix():
+def calculateAttributeStarDistanceMatrix():
 	distanceMatrix = []
 
 	for b in libNodes:
 		row = []
 		for a in binNodes:
-			row.append(argsStarDistance(a, b))
+			row.append(attributeStarDistance(a, b))
 		distanceMatrix.append(row)
 
 	return distanceMatrix
@@ -270,7 +291,6 @@ def dumpDistanceMatrix(distanceMatrix):
 		fd.write("\n")
 
 		for y, row in enumerate(distanceMatrix):
-			print(y, row)
 			fd.write(libLabels[libNodes[y]] + ",")
 			for x, distance in enumerate(row):
 				fd.write(str(distance) + ",")
@@ -278,7 +298,7 @@ def dumpDistanceMatrix(distanceMatrix):
 
 print("generating {}x{} distance matrix...".format(len(binNodes), len(libNodes)))
 #distanceMatrix = calculateStarDistanceMatrix()
-distanceMatrix = calculateArgsStarDistanceMatrix()
+distanceMatrix = calculateAttributeStarDistanceMatrix()
 #printDistanceMatrix(distanceMatrix)
 dumpDistanceMatrix(distanceMatrix)
 
@@ -309,11 +329,12 @@ for b, a in zip(aIndices, bIndices):
 	if aLabel == bLabel:
 		correctMatches += 1
 	elif correctMatchDistance is None:
-		missingMatches +=1
+		missingMatches += 1
 	else:
 		wrongMatches += 1
 
 print("Approximated edit distance: {}".format(totalDistance))
+print("Correct match rate: {}".format(correctMatches / (correctMatches + wrongMatches)))
 print("Correct matches: {}\nWrong matches: {}\nMissing functions: {}".format(correctMatches, wrongMatches, missingMatches))
 
 '''
