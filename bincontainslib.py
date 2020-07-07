@@ -101,6 +101,7 @@ def createCallGraphUsingRadare2(filename):
 	G = nx.DiGraph()
 	addr2name = {}
 	name2addr = {}
+	addr2args = {}
 	for i, func in enumerate(functions):
 		G.add_node(i)
 
@@ -108,20 +109,29 @@ def createCallGraphUsingRadare2(filename):
 		addr2name[i] = name
 		name2addr[name] = i
 
+		r.cmd("s " + name)
+		variables = r.cmdj("afvj")
+		args = [x["type"] for x in variables["reg"]]
+		args += [x["type"] for x in variables["sp"] if x["kind"] == "arg"]
+		args += [x["type"] for x in variables["bp"] if x["kind"] == "arg"]
+		addr2args[i] = args
+
 	for i, func in enumerate(functions):
 		for name in func["imports"]:
+			if name not in name2addr:
+				continue
 			j = name2addr[name]
 			G.add_edge(i, j)
 
-	return G, addr2name
+	return G, addr2name, addr2args
 
 binFile = sys.argv[1]
 libFile = sys.argv[2]
 print("generating graphs...")
 #binGraph, binLabels = createCallGraphFromBinary(binFile)
-binGraph, binLabels = createCallGraphUsingRadare2(binFile)
+binGraph, binLabels, binFuncArgs = createCallGraphUsingRadare2(binFile)
 #libGraph, libLabels = createCallGraphFromLibrary(libFile)
-libGraph, libLabels = createCallGraphUsingRadare2(libFile)
+libGraph, libLabels, libFuncArgs = createCallGraphUsingRadare2(libFile)
 
 binNodes = list(binGraph.nodes())
 libNodes = list(libGraph.nodes())
@@ -197,6 +207,51 @@ def calculateStarDistanceMatrix():
 
 	return distanceMatrix
 
+
+
+def argsDistance(a, b):
+	argsA = binFuncArgs[a]
+	argsB = libFuncArgs[b]
+	dist = abs(len(argsA) - len(argsB))
+
+	for i in range(min(len(argsA), len(argsB))):
+		if argsA[i] != argsB[i]:
+			dist += 1
+
+	return dist
+
+def argsEdgeDistance(a, b):
+	return argsDistance(a, b) + degreeDistance(a, b)
+
+def argsStarDistance(a, b):
+	dist = argsEdgeDistance(a, b)
+
+	aSuccs = binGraph.successors(a)
+	aPrecs = binGraph.predecessors(a)
+	bSuccs = libGraph.successors(b)
+	bPrecs = libGraph.predecessors(b)
+
+	for i in aSuccs:
+		dist += min((argsEdgeDistance(i, j) for j in bSuccs), default=0)
+
+	for i in aPrecs:
+		dist += min((argsEdgeDistance(i, j) for j in bPrecs), default=0)
+
+	return dist
+
+def calculateArgsStarDistanceMatrix():
+	distanceMatrix = []
+
+	for b in libNodes:
+		row = []
+		for a in binNodes:
+			row.append(argsStarDistance(a, b))
+		distanceMatrix.append(row)
+
+	return distanceMatrix
+
+
+
 def printDistanceMatrix(distanceMatrix):
 	for i, a in enumerate(binNodes):
 		print(29 * " " + i * "   ┃" + "   ┏> " + binLabels[a])
@@ -215,13 +270,15 @@ def dumpDistanceMatrix(distanceMatrix):
 		fd.write("\n")
 
 		for y, row in enumerate(distanceMatrix):
+			print(y, row)
 			fd.write(libLabels[libNodes[y]] + ",")
 			for x, distance in enumerate(row):
 				fd.write(str(distance) + ",")
 			fd.write("\n")
 
 print("generating {}x{} distance matrix...".format(len(binNodes), len(libNodes)))
-distanceMatrix = calculateStarDistanceMatrix()
+#distanceMatrix = calculateStarDistanceMatrix()
+distanceMatrix = calculateArgsStarDistanceMatrix()
 #printDistanceMatrix(distanceMatrix)
 dumpDistanceMatrix(distanceMatrix)
 
