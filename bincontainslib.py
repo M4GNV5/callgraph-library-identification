@@ -1,8 +1,10 @@
-import os, sys, r2pipe
+import os, sys, r2pipe, concurrent.futures
 import networkx as nx, networkx.algorithms as nxa
 from scipy.optimize import linear_sum_assignment
 import matplotlib.pyplot as plt
 from operator import itemgetter
+
+pool = concurrent.futures.ThreadPoolExecutor(16)
 
 def findFunctionFromAddress(functionAddresses, address):
 	# assume functionAddresses is sorted
@@ -142,9 +144,13 @@ binFile = sys.argv[1]
 libFile = sys.argv[2]
 print("generating graphs...")
 #binGraph, binLabels = createCallGraphFromBinary(binFile)
-binGraph, binLabels, binFuncAttrs = createCallGraphUsingRadare2(binFile)
+#binGraph, binLabels, binFuncAttrs = createCallGraphUsingRadare2(binFile)
 #libGraph, libLabels = createCallGraphFromLibrary(libFile)
-libGraph, libLabels, libFuncAttrs = createCallGraphUsingRadare2(libFile)
+#libGraph, libLabels, libFuncAttrs = createCallGraphUsingRadare2(libFile)
+
+binData, libData = pool.map(createCallGraphUsingRadare2, [binFile, libFile])
+binGraph, binLabels, binFuncAttrs = binData
+libGraph, libLabels, libFuncAttrs = libData
 
 binNodes = list(binGraph.nodes())
 libNodes = list(libGraph.nodes())
@@ -261,15 +267,15 @@ def attributeStarDistance(a, b):
 	return dist
 
 def calculateAttributeStarDistanceMatrix():
-	distanceMatrix = []
-
-	for b in libNodes:
+	def createRow(b):
 		row = []
 		for a in binNodes:
 			row.append(attributeStarDistance(a, b))
-		distanceMatrix.append(row)
 
-	return distanceMatrix
+		return row
+
+	result = pool.map(createRow, libNodes)
+	return list(result)
 
 
 
@@ -323,8 +329,8 @@ for b, a in zip(aIndices, bIndices):
 		if binLabels[binNodes[i]] == bLabel:
 			correctMatchDistance = x
 
-	print("Match {:30} to {:30} with distance {}. Distance to correct match {}"
-		.format(aLabel, bLabel, distance, correctMatchDistance))
+	#print("Match {:30} to {:30} with distance {}. Distance to correct match {}"
+	#	.format(aLabel, bLabel, distance, correctMatchDistance))
 
 	if aLabel == bLabel:
 		correctMatches += 1
