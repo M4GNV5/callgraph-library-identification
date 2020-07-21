@@ -71,7 +71,7 @@
         \begin{tabular}{rl}
                 \textbf{First corrector}        & Prof. Dr.-Ing. Hans-Joachim Hof \\
                 \textbf{Technical Supervision}  & Dominik Bayerl \\
-                \textbf{Date of filing}         & 04.05.2020 \\
+                \textbf{Date of filing}         & 2020-07-21 \\
         \end{tabular}
 }
 
@@ -84,11 +84,11 @@
 \newpage
 
 \chapter{Abstract}
-In the past finding known functions in binaries was often solved using code signatures. For example antivirus programs generate checksums of machine code in order to find malicious code segments. Or when injecting code into a running program often a known function is searched using a machine code pattern, then the function is hooked by overwriting its first instruction by a jump to custom code. \\
-Both these approaches fail when the target code changes slightly. Apart from code changes this can also happen when using a different compiler or other compilation options. While updating the code checksum or pattern fixes that problem this paper aims at developing an algorithm which can still identify libraries in binaries even when their machine code is not identical. \\
-The goal of this paper is to create an algorithm which given two binary files, usually a library and a linked executable, can determine if the library is included in the executable. In reality most executables for desktop operating systems use dynamic linking, in which case it is trivial to tell what libraries are used by the program. For firmware files used in microprocessors however all libraries are statically linked and thus included in the firmware file. Furthermore these libraries are often compiled with options specific to the use case, functions are left out or are otherwise optimized. This results in the library footprint in the firmware to hardly ever be identical to a binary obtained by compiling the binary in a different context. \\
+In the past finding known functions in binaries was often solved using code signatures. For example antivirus programs generate checksums of machine code in order to find malicious code segments. Another common approach is to search for a known bytecode pattern, matching instruction opcodes and ignoring jump offsets. \\
+Both these approaches fail when the target binary changes slightly. Apart from source code changes this can also happen when using a different compiler or other compilation options. While updating the code checksum or pattern fixes that problem, this paper aims at developing an algorithm which can still identify libraries in binaries even when their machine code is not identical. \\
+The goal of this paper is to create an algorithm which given two binary files, usually a library and a statically linked executable, can determine if the library is included in the executable. In reality most executables for desktop operating systems use dynamic linking, in which case it is trivial to tell what libraries are used by the program. For firmware files used in microprocessors however all libraries are statically linked and thus included in the firmware file. Furthermore these libraries are often compiled with options specific to the use case, functions are left out or are otherwise optimized. This results in the library footprint in the firmware to hardly ever be identical to a binary obtained by compiling the binary in a different context. \\
 Instead of code signatures or patterns the approach presented in this paper is based on call graphs. In the first step a call graph $G_2$ is generated for the firmware and one $G_1$ for the library. In the second step an error tolerant subgraph matching algorithm calculates the minimal amount of changes required to $G_1$ in order to make $G_1$ a subgraph of $G_2$. By applying a reasonable threshold to this distance we can determine wether the library is included in the firmware. \\
-Chapter \ref{chap:notation} covers the notation used in chapters \ref{chap:graphacquisition} and \ref{chap:graphmatching} which cover call graphs and graph matching respectively. Afterwords in chapter \ref{chap:libraryidentification} these steps are adapted and combined to match the library graph to the executable graph. In the last chapter \ref{chap:validation} we show the performance and accuracy of the described method by applying it to real world examples.
+Chapter \ref{chap:notation} covers the notation used in chapters \ref{chap:graphacquisition} and \ref{chap:graphmatching}, which cover call graphs and graph matching respectively. Afterwords in chapter \ref{chap:libraryidentification} these steps are adapted and combined to map library call graphs to call graphs obtained from executables or firmware files. In the last chapter \ref{chap:validation} we show common results of the algorithm produced by real world examples. We then use these results in order to pick a good threshold.
 
 \chapter{Notation} \label{chap:notation}
 This chapter summarizes the notation used in this paper when describing graphs. \\
@@ -522,7 +522,7 @@ Libraries that provide a hosted environment usually provide the entry point of t
 
 \chapter{Validation} \label{chap:validation}
 The efficient graph matching algorithms described in \ref{sec:approxeditdistance} return a graph edit distance. This graph edit distance however is not a good metric for validating a library identification algorithm. When matching two libraries of different sizes to the same binary the call graph of the larger library will naturally have a bigger graph edit distance than the call graph of the smaller library. \\
-The most obvious metric for call graph matching validation is the factor of functions correctly mapped. For a library, with call graph $G_1$, with known symbols returned by the labeling function $l(v_i)$ and a mapping $\phi$ the metric can be calulated:
+The most obvious metric for call graph matching validation is the factor of functions correctly mapped. For a library, with call graph $G_1$, with known symbols returned by the labeling function $l(v_i)$ and a mapping $\phi$ this metric $\gamma(G_1, \phi)$ can be calulated:
 \begin{equation}
 \xi(v_1, v_2) = \begin{cases}
 		1 & \text{if } l(v_1) = l(v_2) \\
@@ -534,21 +534,22 @@ The most obvious metric for call graph matching validation is the factor of func
 \end{equation}
 
 As this metric relies on function symbols it cannot be used on binaries with stripped symbols. Thus it cannot be used in real world scenarios when trying to identify libraries in an unknown binary. \\
-Instead we define a metric which can not only be used for validation, but also later for determining wether a library is included in an unknown binary. This metric is called the \textit{normalized edit distance}. It is based on the edit distance returned by the algorithms described in \ref{sec:approxeditdistance}, but normalizes the edit distance, resulting in a factor between $0$ and $1$, with $0$ meaning an edit distance of $0$ and $1$ meaning the maximum possible edit distance. \\ % TODO explain max possible edit distance
-As empirically shown below, in reality the \textit{normalized edit distance} is usually between $0.2$ and $0.4$ when a library is not included in a binary and usually between $0$ and $0.15$ when the matched library is included in the binary. We thus define a threshold at $0.175$ used in library detection. When the \textit{normalized edit distance} is below this threshold the library tested is said to be included in the tested binary. \\
-In order to find these ranges a large set of binaries and libraries taken from the Debian binary repositories have been analyzed. 82 of the commonly installed binaries with a binary size between 100KiB and 4MiB and 216 commonly installed libraries between 100KiB and 2MiB have been analyzed. Together they form a set of 17712 mappings which are all known to be either false positives or true negatives, i.e. for each mapping the library is known to be not included in the binary. Appendix \ref{appendix:testset} shows the full list of all binaries and libraries used. Figure \ref{fig:validation:negatives} shows the distribution of the resulting \textit{normalized edit distances}. \\
+Instead we define a metric which can not only be used for validation, but also later for determining wether a library is included in an unknown binary. This metric is called the \textit{normalized edit distance}. It is based on the edit distance returned by the algorithms described in \ref{sec:approxeditdistance}, but normalizes the edit distance, resulting in a factor between $0$ and $1$, with $0$ meaning an edit distance of $0$ and $1$ meaning the maximum possible edit distance, i.e. all attributes of all functions differ. \\
+As empirically shown below, in reality the \textit{normalized edit distance} is usually between $0.2$ and $0.4$ when a library is not included in a binary and between $0$ and $0.15$ when the matched library is included in the binary. We can thus pick a threshold between $0.1$ and $0.2$. When the \textit{normalized edit distance} is below this threshold the library tested is said to be included in the tested binary. Picking a lower threshold may result in false negatives, picking a higher one results in more false positives. \\
+In order to find these ranges a large number of combinations of binaries and libraries taken from the Debian binary repositories have been analyzed. 82 of the commonly installed binaries with a binary size between 100KiB and 4MiB and 216 commonly installed libraries between 100KiB and 2MiB have been analyzed. Together they form a set of 17712 mappings which are all known to be either false positives or true negatives, i.e. for each mapping the library is known to be not included in the binary. Appendix \ref{appendix:testset} shows the full list of all binaries and libraries used. Figure \ref{fig:validation:negatives} shows the distribution of the resulting \textit{normalized edit distances}, the area below the two curves represent the amount of false positives and true negatives in the test set when using a threshold of $0.15$. \\
+On desktop and servers static linking is rarely used. While Debian does not have a policy prohibiting the use of statically linked libraries, it is advised to not use static linking\cite{debian-static-linking}. A special \textit{Lintian}\footnote{Debian package linting system.} tag keeps track of all, currently 42, packages including statically linked binaries\cite{debian-static-linked-list}. Figure \ref{fig:validation:positives} shows the \textit{normalized edit distances} when applying the library identification algorithm to these binaries and their included libraries.
 
 \begin{figure}[H]
 	\centering
 	\includegraphics{negative-edit-distances}
-	\caption{Normalized edit distance frequency}
+	\caption{Normalized edit distance frequency when matching libraries not included in dynamically linked binaries}
 	\label{fig:validation:negatives}
 \end{figure}
 
 \begin{figure}[H]
 	\centering
-	TODO
-	\caption{Normalized edit distance frequency}
+	\includegraphics{positive-edit-distances}
+	\caption{Normalized edit distance frequency when matching libraries included in statically linked binaries}
 	\label{fig:validation:positives}
 \end{figure}
 
@@ -557,9 +558,9 @@ In order to find these ranges a large set of binaries and libraries taken from t
 
 \chapter{Conclusion}
 This paper first covered the basics of call graph generation from binary files. Various algorithms for graph matching are covered, from isomorphic graph matching to error tolerant graph edit distances. \\
-These algorithms are, by default, unable to work with regular call graphs, because of call graphs being \textit{unattributed} and \textit{directed}. While the algorithms can be easily adapted to \textit{directed} graphs, function metadata has to be extracted from the binary in order to use the standard node distance functions. \\
-Using the adapted graph edit distance calculation allows to determine wether a library is included in a binary file, even if the code is not identical. \\
-Chapter \ref{chap:validation} evaluates the performance and accuracy of the algorithm applied to real world examples. \\ % TODO update!
+These algorithms are, by default, unable to work with regular call graphs, because of call graphs being \textit{unlabeled} and \textit{directed}. While the algorithms can be easily adapted to \textit{directed} graphs, function metadata has to be extracted from the binary in order to use the standard node distance functions. \\
+Using the adapted graph edit distance calculation and metadata from static code analysis, allows to calculate a graph edit distance of two call graphs. Normalizing this edit distance and applying a threshold allows determining wether a library is included in a binary file, even if the code is not identical. \\
+In chapter \ref{chap:validation} the algorithm is applied to a large set of binary-library combinations, resulting in common value ranges of the normalized edit distance. Using these value ranges the threshold value can be picked. \\
 In future applications multiple versions of the same library could be matched on the same binary in order to find out the exact version used. Combining this with a vulnerability database one can automatically find known vulnerabilities in software.
 
 \begin{thebibliography}{9}
@@ -632,7 +633,8 @@ In future applications multiple versions of the same library could be matched on
 		April 2018.
 		
 	\bibitem{regalloc} Jakob Löw,
-		\textit{Register allocation in JIT compilers}
+		\textit{Register allocation in JIT compilers},
+		\url{https://i.m4gnus.de/registerallocation.pdf},
 		June 2018.
 
 	\bibitem{stuff2} Xiaoyang Chen et. al,
@@ -648,14 +650,24 @@ In future applications multiple versions of the same library could be matched on
 		\textit{Radare2 book: Signatures},
 		retrieved April 30 2020.
 
+	\bibitem{debian-static-linking}
+		\url{https://wiki.debian.org/StaticLinking}
+		\textit{Debian Wiki: Static Linking},
+		retrieved July 20 2020.
+
+	\bibitem{debian-static-linked-list}
+		\url{https://lintian.debian.org/tags/statically-linked-binary.html}
+		\textit{Lintian: statically linked binaries},
+		retrieved July 20 2020.
+
 % https://radare.gitbooks.io/radare2book/
 \end{thebibliography}
 
 \listoffigures
 
 \begin{appendices}
-\chapter{Test set for chapter \ref{chap:validation}} \label{appendix:testset}
-\section{Binaries}
+\chapter{Test Set for Chapter \ref{chap:validation}} \label{appendix:testset}
+\section{Executables}
 \begin{sloppypar}
 {\scriptsize
 apt-ftparchive, bitmap, curl, dbus-daemon, diff, dirmngr, dirmngr-client, dpkg, dpkg-deb, dpkg-divert, dpkg-query, dpkg-split, du, eqn, find, git, git-shell, gpg, gpg-agent, gpg-connect-agent, gpg-wks-server, gpgcompose, gpgconf, gpgsm, gpgtar, gpgv, groff, grops, grotty, host, htop, install, kbxutil, localedef, lsof, make, man, mandb, mawk, nmap, nping, openssl, partx, patch, pic, rdma, reportbug, resolvectl, rsync, sftp, sort, ssh, ssh-add, ssh-agent, ssh-keygen, ssh-keyscan, symcryptrun, systemd-analyze, tbl, telnet.netkit, top, troff, vim.tiny, wget, x11perf, x86\_64-linux-gnu-as, x86\_64-linux-gnu-cpp-8, x86\_64-linux-gnu-dwp, x86\_64-linux-gnu-g++-8, x86\_64-linux-gnu-gcc-8, x86\_64-linux-gnu-gcov-8, x86\_64-linux-gnu-gcov-dump-8, x86\_64-linux-gnu-gcov-tool-8, x86\_64-linux-gnu-ld.bfd, x86\_64-linux-gnu-ld.gold, x86\_64-linux-gnu-objcopy, x86\_64-linux-gnu-objdump, x86\_64-linux-gnu-readelf, x86\_64-linux-gnu-strip, xditview, xedit, xkbcomp,
