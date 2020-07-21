@@ -114,6 +114,18 @@ def createCallGraphUsingRadare2(filename):
 		r.cmd("s " + name)
 		funcInfo = r.cmdj("afij")[0]
 
+		for key in ["regvars", "spvars", "bpvars"]:
+			if key not in funcInfo:
+				funcInfo[key] = []
+
+		for key in ["nbbs", "edges"]:
+			if key not in funcInfo:
+				funcInfo[key] = 0
+
+		for key in ["is-pure", "noreturn"]:
+			if key not in funcInfo:
+				funcInfo[key] = False
+
 		args = [x["type"] for x in funcInfo["regvars"]]
 		args += [x["type"] for x in funcInfo["spvars"] if x["kind"] == "arg"]
 		args += [x["type"] for x in funcInfo["bpvars"] if x["kind"] == "arg"]
@@ -125,8 +137,10 @@ def createCallGraphUsingRadare2(filename):
 		attributes = {
 			"args": args,
 			"blocks": blocks,
-			"numLocals": funcInfo["nlocals"],
-			"stackSize": funcInfo["stackframe"],
+			"blockCount": funcInfo["nbbs"],
+			"edgeCount": funcInfo["edges"],
+			"isPure": funcInfo["is-pure"],
+			"noReturn": funcInfo["noreturn"],
 			# TODO more?
 		}
 		addr2attrs[i] = attributes
@@ -240,10 +254,35 @@ def attributeDistance(a, b):
 		if argsA[i] != argsB[i]:
 			dist += 1
 
+	#if attrsA["isPure"] != attrsB["isPure"]:
+	#	dist += 10
+	#if attrsA["noReturn"] != attrsB["noReturn"]:
+	#	dist += 10
+
+	dist += abs(attrsA["blockCount"] - attrsB["blockCount"])
+	dist += abs(attrsA["edgeCount"] - attrsB["edgeCount"])
+
 	dist += sortedLabelSetDistance(attrsA["blocks"], attrsB["blocks"])
 
 	#dist += abs(attrsA["numLocals"] - attrsB["numLocals"])
 	#dist += abs(attrsA["stackSize"] - attrsB["stackSize"]) // 8
+
+	return dist
+
+def maxPossibleAttributeDistance(a, b):
+	dist = 0
+	attrsA = binFuncAttrs[a]
+	attrsB = libFuncAttrs[b]
+
+	dist += max(len(attrsA["args"]), len(attrsB["args"]))
+
+	#dist += 10 #isPure
+	#dist += 10 #noReturn
+
+	dist += max(attrsA["blockCount"], attrsB["blockCount"])
+	dist += max(attrsA["edgeCount"], attrsB["edgeCount"])
+
+	dist += max(len(attrsA["blocks"]), len(attrsB["blocks"]))
 
 	return dist
 
@@ -263,6 +302,29 @@ def attributeStarDistance(a, b):
 
 	for i in aPrecs:
 		dist += min((attributeEdgeDistance(i, j) for j in bPrecs), default=0)
+
+	return dist
+
+def maxPossibleAttributeEdgeDistance(a, b):
+	dist = maxPossibleAttributeDistance(a, b)
+	dist += max(binGraph.in_degree(a), libGraph.in_degree(b))
+	dist += max(binGraph.out_degree(a), libGraph.out_degree(b))
+
+	return dist
+
+def maxPossibleAttributeStarDistance(a, b):
+	dist = maxPossibleAttributeEdgeDistance(a, b)
+
+	aSuccs = binGraph.successors(a)
+	aPrecs = binGraph.predecessors(a)
+	bSuccs = libGraph.successors(b)
+	bPrecs = libGraph.predecessors(b)
+
+	for i in aSuccs:
+		dist += max((maxPossibleAttributeEdgeDistance(i, j) for j in bSuccs), default=0)
+
+	for i in aPrecs:
+		dist += max((maxPossibleAttributeEdgeDistance(i, j) for j in bPrecs), default=0)
 
 	return dist
 
@@ -314,12 +376,14 @@ aIndices, bIndices = linear_sum_assignment(distanceMatrix)
 print("DONE")
 
 totalDistance = 0
+maxPossibleDistance = 0
 correctMatches = 0
 wrongMatches = 0
 missingMatches = 0
 for b, a in zip(aIndices, bIndices):
 	distance = distanceMatrix[b][a]
 	totalDistance += distance
+	maxPossibleDistance += maxPossibleAttributeStarDistance(a, b)
 
 	aLabel = binLabels[binNodes[a]]
 	bLabel = libLabels[libNodes[b]]
@@ -339,8 +403,20 @@ for b, a in zip(aIndices, bIndices):
 	else:
 		wrongMatches += 1
 
+if maxPossibleDistance == 0:
+	normalizedDistance = 1
+else:
+	normalizedDistance = totalDistance / maxPossibleDistance
+
+if correctMatches == 0 and wrongMatches == 0:
+	matchRate = 0
+else:
+	matchRate = correctMatches / (correctMatches + wrongMatches)
+
+print("Normalized edit distance : {}".format(normalizedDistance))
+print("Correct match rate: {}".format(matchRate))
 print("Approximated edit distance: {}".format(totalDistance))
-print("Correct match rate: {}".format(correctMatches / (correctMatches + wrongMatches)))
+print("Max possible edit distance: {}".format(maxPossibleDistance))
 print("Correct matches: {}\nWrong matches: {}\nMissing functions: {}".format(correctMatches, wrongMatches, missingMatches))
 
 '''
