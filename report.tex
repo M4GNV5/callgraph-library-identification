@@ -19,6 +19,7 @@
 \usepackage{float}
 \usepackage{amsmath}
 \usepackage{hyperref}
+\usepackage[toc]{appendix}
 
 \hypersetup{
     unicode=true,    % allow unicode chars in hyperlinks
@@ -520,6 +521,37 @@ Libraries that provide a hosted environment usually provide the entry point of t
 % TODO: special functions (i.e. intrinsics, syscall shorthands)
 
 \chapter{Validation} \label{chap:validation}
+The efficient graph matching algorithms described in \ref{sec:approxeditdistance} return a graph edit distance. This graph edit distance however is not a good metric for validating a library identification algorithm. When matching two libraries of different sizes to the same binary the call graph of the larger library will naturally have a bigger graph edit distance than the call graph of the smaller library. \\
+The most obvious metric for call graph matching validation is the factor of functions correctly mapped. For a library, with call graph $G_1$, with known symbols returned by the labeling function $l(v_i)$ and a mapping $\phi$ the metric can be calulated:
+\begin{equation}
+\xi(v_1, v_2) = \begin{cases}
+		1 & \text{if } l(v_1) = l(v_2) \\
+		0 & \text{otherwise}
+	\end{cases}
+\end{equation}
+\begin{equation}
+\gamma(G_1, \phi) = \frac{1}{|G_1|} \cdot \sum_{v_i \in G_1} \xi(v_i, \phi(v_i))
+\end{equation}
+
+As this metric relies on function symbols it cannot be used on binaries with stripped symbols. Thus it cannot be used in real world scenarios when trying to identify libraries in an unknown binary. \\
+Instead we define a metric which can not only be used for validation, but also later for determining wether a library is included in an unknown binary. This metric is called the \textit{normalized edit distance}. It is based on the edit distance returned by the algorithms described in \ref{sec:approxeditdistance}, but normalizes the edit distance, resulting in a factor between $0$ and $1$, with $0$ meaning an edit distance of $0$ and $1$ meaning the maximum possible edit distance. \\ % TODO explain max possible edit distance
+As empirically shown below, in reality the \textit{normalized edit distance} is usually between $0.2$ and $0.4$ when a library is not included in a binary and usually between $0$ and $0.15$ when the matched library is included in the binary. We thus define a threshold at $0.175$ used in library detection. When the \textit{normalized edit distance} is below this threshold the library tested is said to be included in the tested binary. \\
+In order to find these ranges a large set of binaries and libraries taken from the Debian binary repositories have been analyzed. 82 of the commonly installed binaries with a binary size between 100KiB and 4MiB and 216 commonly installed libraries between 100KiB and 2MiB have been analyzed. Together they form a set of 17712 mappings which are all known to be either false positives or true negatives, i.e. for each mapping the library is known to be not included in the binary. Appendix \ref{appendix:testset} shows the full list of all binaries and libraries used. Figure \ref{fig:validation:negatives} shows the distribution of the resulting \textit{normalized edit distances}. \\
+
+\begin{figure}[H]
+	\centering
+	\includegraphics{negative-edit-distances}
+	\caption{Normalized edit distance frequency}
+	\label{fig:validation:negatives}
+\end{figure}
+
+\begin{figure}[H]
+	\centering
+	TODO
+	\caption{Normalized edit distance frequency}
+	\label{fig:validation:positives}
+\end{figure}
+
 %\section{library database}
 %\section{firmware files}
 
@@ -620,5 +652,23 @@ In future applications multiple versions of the same library could be matched on
 \end{thebibliography}
 
 \listoffigures
+
+\begin{appendices}
+\chapter{Test set for chapter \ref{chap:validation}} \label{appendix:testset}
+\section{Binaries}
+\begin{sloppypar}
+{\scriptsize
+apt-ftparchive, bitmap, curl, dbus-daemon, diff, dirmngr, dirmngr-client, dpkg, dpkg-deb, dpkg-divert, dpkg-query, dpkg-split, du, eqn, find, git, git-shell, gpg, gpg-agent, gpg-connect-agent, gpg-wks-server, gpgcompose, gpgconf, gpgsm, gpgtar, gpgv, groff, grops, grotty, host, htop, install, kbxutil, localedef, lsof, make, man, mandb, mawk, nmap, nping, openssl, partx, patch, pic, rdma, reportbug, resolvectl, rsync, sftp, sort, ssh, ssh-add, ssh-agent, ssh-keygen, ssh-keyscan, symcryptrun, systemd-analyze, tbl, telnet.netkit, top, troff, vim.tiny, wget, x11perf, x86\_64-linux-gnu-as, x86\_64-linux-gnu-cpp-8, x86\_64-linux-gnu-dwp, x86\_64-linux-gnu-g++-8, x86\_64-linux-gnu-gcc-8, x86\_64-linux-gnu-gcov-8, x86\_64-linux-gnu-gcov-dump-8, x86\_64-linux-gnu-gcov-tool-8, x86\_64-linux-gnu-ld.bfd, x86\_64-linux-gnu-ld.gold, x86\_64-linux-gnu-objcopy, x86\_64-linux-gnu-objdump, x86\_64-linux-gnu-readelf, x86\_64-linux-gnu-strip, xditview, xedit, xkbcomp,
+}
+\end{sloppypar}
+
+\section{Libraries}
+\begin{sloppypar}
+{\scriptsize
+BIG5HKSCS.so, Byte.so, GB18030.so, GBK.so, IBM1364.so, IBM1371.so, IBM1388.so, IBM1390.so, IBM1399.so, IBM933.so, IBM937.so, Normalize.so, POSIX.so, POSIX.so, Storable.so, \_\_odrpack.cpython-37m-x86\_64-linux-gnu.so, \_arpack.cpython-37m-x86\_64-linux-gnu.so, \_backend\_agg.cpython-37m-x86\_64-linux-gnu.so, \_bsddb.x86\_64-linux-gnu.so, \_bspl.cpython-37m-x86\_64-linux-gnu.so, \_cffi\_backend.cpython-37m-x86\_64-linux-gnu.so, \_cobyla.cpython-37m-x86\_64-linux-gnu.so, \_codecs\_cn.cpython-37m-x86\_64-linux-gnu.so, \_codecs\_cn.x86\_64-linux-gnu.so, \_codecs\_hk.cpython-37m-x86\_64-linux-gnu.so, \_codecs\_hk.x86\_64-linux-gnu.so, \_codecs\_jp.cpython-37m-x86\_64-linux-gnu.so, \_codecs\_jp.x86\_64-linux-gnu.so, \_codecs\_kr.cpython-37m-x86\_64-linux-gnu.so, \_codecs\_kr.x86\_64-linux-gnu.so, \_codecs\_tw.cpython-37m-x86\_64-linux-gnu.so, \_codecs\_tw.x86\_64-linux-gnu.so, \_csparsetools.cpython-37m-x86\_64-linux-gnu.so, \_ctypes.cpython-37m-x86\_64-linux-gnu.so, \_ctypes.x86\_64-linux-gnu.so, \_dbus\_bindings.cpython-37m-x86\_64-linux-gnu.so, \_decimal.cpython-37m-x86\_64-linux-gnu.so, \_decomp\_update.cpython-37m-x86\_64-linux-gnu.so, \_distance\_wrap.cpython-37m-x86\_64-linux-gnu.so, \_dop.cpython-37m-x86\_64-linux-gnu.so, \_fblas.cpython-37m-x86\_64-linux-gnu.so, \_fftpack.cpython-37m-x86\_64-linux-gnu.so, \_fitpack.cpython-37m-x86\_64-linux-gnu.so, \_gdal.cpython-37m-x86\_64-linux-gnu.so, \_gi.cpython-36m-x86\_64-linux-gnu.so, \_gi.cpython-37m-x86\_64-linux-gnu.so, \_group\_columns.cpython-37m-x86\_64-linux-gnu.so, \_hausdorff.cpython-37m-x86\_64-linux-gnu.so, \_hierarchy.cpython-37m-x86\_64-linux-gnu.so, \_image.cpython-37m-x86\_64-linux-gnu.so, \_imaging.cpython-37m-x86\_64-linux-gnu.so, \_interpolative.cpython-37m-x86\_64-linux-gnu.so, \_iterative.cpython-37m-x86\_64-linux-gnu.so, \_lbfgsb.cpython-37m-x86\_64-linux-gnu.so, \_max\_len\_seq\_inner.cpython-37m-x86\_64-linux-gnu.so, \_min\_spanning\_tree.cpython-37m-x86\_64-linux-gnu.so, \_minpack.cpython-37m-x86\_64-linux-gnu.so, \_multiarray\_tests.cpython-37m-x86\_64-linux-gnu.so, \_nd\_image.cpython-37m-x86\_64-linux-gnu.so, \_ni\_label.cpython-37m-x86\_64-linux-gnu.so, \_ogr.cpython-37m-x86\_64-linux-gnu.so, \_openssl.abi3.so, \_optimal\_leaf\_ordering.cpython-37m-x86\_64-linux-gnu.so, \_osr.cpython-37m-x86\_64-linux-gnu.so, \_path.cpython-37m-x86\_64-linux-gnu.so, \_peak\_finding\_utils.cpython-37m-x86\_64-linux-gnu.so, \_ppoly.cpython-37m-x86\_64-linux-gnu.so, \_qhull.cpython-37m-x86\_64-linux-gnu.so, \_quadpack.cpython-37m-x86\_64-linux-gnu.so, \_reordering.cpython-37m-x86\_64-linux-gnu.so, \_shortest\_path.cpython-37m-x86\_64-linux-gnu.so, \_solve\_toeplitz.cpython-37m-x86\_64-linux-gnu.so, \_ssl.cpython-37m-x86\_64-linux-gnu.so, \_ssl.x86\_64-linux-gnu.so, \_stats.cpython-37m-x86\_64-linux-gnu.so, \_superlu.cpython-37m-x86\_64-linux-gnu.so, \_test\_odeint\_banded.cpython-37m-x86\_64-linux-gnu.so, \_test\_round.cpython-37m-x86\_64-linux-gnu.so, \_testcapi.cpython-37m-x86\_64-linux-gnu.so, \_tools.cpython-37m-x86\_64-linux-gnu.so, \_traversal.cpython-37m-x86\_64-linux-gnu.so, \_trlib.cpython-37m-x86\_64-linux-gnu.so, \_ufuncs\_cxx.cpython-37m-x86\_64-linux-gnu.so, \_umath\_linalg.cpython-37m-x86\_64-linux-gnu.so, \_upfirdn\_apply.cpython-37m-x86\_64-linux-gnu.so, \_voronoi.cpython-37m-x86\_64-linux-gnu.so, \_yaml.cpython-37m-x86\_64-linux-gnu.so, apt\_pkg.cpython-37m-x86\_64-linux-gnu.so, ckdtree.cpython-37m-x86\_64-linux-gnu.so, cython\_blas.cpython-37m-x86\_64-linux-gnu.so, cython\_lapack.cpython-37m-x86\_64-linux-gnu.so, dfitpack.cpython-37m-x86\_64-linux-gnu.so, ft2font.cpython-37m-x86\_64-linux-gnu.so, givens\_elimination.cpython-37m-x86\_64-linux-gnu.so, interpnd.cpython-37m-x86\_64-linux-gnu.so, kiwisolver.cpython-36m-x86\_64-linux-gnu.so, kiwisolver.cpython-37m-x86\_64-linux-gnu.so, libBLTlite.2.5.so, libCNS.so, libCharLS.so, libGL.so, libGLX\_mesa.so, libGLdispatch.so, libGeoIP.so, libICE.so, libJIS.so, libJISX0213.so, libXaw7.so, libXmu.so, libXt.so, libapt-private.so, libarpack.so, libblas.so, libcc1.so, libcp1plugin.so, libcurl-gnutls.so, libcurl.so, libdapclient.so, libdfalt.so, libdrm\_intel.so, libedit.so, libelf-0.176.so, libepsilon.so, libexpatw.so, libfontconfig.so, libfreeblpriv3.so, libfreetype.so, libfyba.so, libgeos\_c.so, libgeotiff.so, libgirepository-1.0.so, libglapi.so, libgmp.so, libgobject-2.0.so, libgomp.so, libgssapi\_krb5.so, libhdf5\_serial\_fortran.so, libhdf5\_serial\_hl.so, libhdf5\_serialhl\_fortran.so, libhogweed.so, libicutu.so, libidn2.so, libisc-pkcs11.so, libisc.so, libisccfg.so, libitm.so, libjpeg.so, libk5crypto.so, libkmlbase.so, libkmlconvenience.so, libkmldom.so, libkmlengine.so, libkmod.so, libkrb5.so, libksba.so, liblcms2.so, libldap\_r-2.4.so, liblognorm.so, liblsan.so, liblua5.3-c++.so, liblua5.3.so, liblz4.so, libmagic.so, libman-2.8.5.so, libmariadb.so, libmfhdfalt.so, libmpdec.so, libmpfr.so, libnetfilter\_conntrack.so, libnettle.so, libnftnl.so, libnghttp2.so, libnspr4.so, libnssckbi.so, libnssdbm3.so, libnssutil3.so, libodbc.so, libogdi.so, libopenjp2.so, libpcap.so, libpcre2-8.so, libpng16.so, libpostfix-global.so, libpostfix-tls.so, libpostfix-util.so, libpq.so, libproj.so, libqhull.so, libquadmath.so, librtmp.so, libsasl2.so, libseccomp.so, libsemanage.so, libsmime3.so, libsoftokn3.so, libssh2.so, libssl.so, libssl3.so, libsuperlu.so, libtiff.so, libtsan.so, libubsan.so, libuchardet.so, liburiparser.so, libvpf.so, libvrf.so, libwebp.so, libxcb-glx.so, libxcb.so, libxkbfile.so, libyaml-0.so, libzstd.so, lsoda.cpython-37m-x86\_64-linux-gnu.so, mio5\_utils.cpython-37m-x86\_64-linux-gnu.so, mtrand.cpython-37m-x86\_64-linux-gnu.so, pycurl.cpython-37m-x86\_64-linux-gnu.so, qhull.cpython-37m-x86\_64-linux-gnu.so, re.so, re.so, specfun.cpython-37m-x86\_64-linux-gnu.so, streams.cpython-37m-x86\_64-linux-gnu.so, vode.cpython-37m-x86\_64-linux-gnu.so,
+}
+\end{sloppypar}
+
+\end{appendices}
 
 \end{document}
